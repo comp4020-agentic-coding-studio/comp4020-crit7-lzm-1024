@@ -85,6 +85,8 @@ for (const route of ROUTES) {
           `${id}: ${help} (${nodes.map((node) => node.target.join(" ")).join("; ")})`,
       );
       expect(violations).toEqual([]);
-    });
+    // Full-day desktop and mobile grids contain over 1,000 labelled slots.
+    // Keep every axe rule above; allow jsdom time to inspect the complete DOM.
+    }, 60_000);
   });
 }

@@ -1,0 +1,183 @@
+---
+import Site from "../../layouts/Site.astro";
+import TimeSlot from "../../components/TimeSlot.astro";
+import { dayBookings, isAvailable } from "../../lib/db";
+import { defaultSearch, durations, endFor, rooms, slots, sydneyNowTime, sydneyToday } from "../../lib/rooms";
+import { readSearch, searchQuery } from "../../lib/search";
+import { currentDemoEmail } from "../../lib/session";
+
+const room = rooms.find((candidate) => candidate.id === Astro.params.id);
+if (!room) return Astro.redirect("/?notice=invalid");
+const params = Astro.url.searchParams;
+const defaults = defaultSearch();
+const search = readSearch(params);
+const { date, people } = search;
+const picked = params.get("picked") === "1";
+const requestedPickDuration = Number(params.get("pickDuration"));
+const pickDuration = durations.includes(requestedPickDuration) ? requestedPickDuration : 0.5;
+const time = slots().slice(0, -1).includes(params.get("time") || "") ? params.get("time")!
+  : search.searched && search.rangeValid ? search.from
+  : date === defaults.date ? defaults.time : "08:00";
+const end = endFor(date, time, pickDuration);
+const available = picked && date >= sydneyToday() && (date !== sydneyToday() || time > sydneyNowTime()) && end.slice(11) <= "22:00" && people <= room.capacity && isAvailable(room.id, `${date}T${time}`, end);
+const back = `/?${searchQuery(search, { library: room.library })}`;
+const demoEmail = currentDemoEmail(Astro.cookies);
+const reserved = dayBookings(date, demoEmail ? "" : Astro.cookies.get('studyspace_id')?.value || '', demoEmail || "").filter((booking) => booking.room === room.id);
+const notice = params.get("notice");
+const mailConfigured = Boolean(process.env.RESEND_API_KEY && process.env.BOOKING_EMAIL_FROM);
+const roomSlots = slots().slice(0, -1).map((startTime) => {
+  const slotEnd = endFor(date, startTime, 0.5);
+  const booking = reserved.find((value) => value.start < slotEnd && value.end > `${date}T${startTime}`);
+  const past = date < sydneyToday() || (date === sydneyToday() && startTime <= sydneyNowTime());
+  const status = booking ? booking.mine ? "mine" : "booked" : past ? "past" : "free";
+  return {
+    room: room.id, time: startTime, end: slotEnd.slice(11), status, canBook: status === "free",
+    href: `/rooms/${encodeURIComponent(room.id)}?${searchQuery(search, { library: room.library, time: startTime, picked: "1", pickDuration: "0.5" })}`,
+    label: `${room.library} · ${room.name}`,
+    selected: available && status === "free" && startTime >= time && startTime < end.slice(11),
+  };
+});
+---
+<Site title={room.id} active="find">
+  <main class="detail-page">
+    <a class="back-link" href={back}>← Back to spaces</a>
+    <div class="detail-layout">
+      <section class="detail-main">
+        <span class="section-kicker">{room.library.toUpperCase()} LIBRARY · {room.category.toUpperCase()}</span>
+        <h1>{room.name}</h1>
+        <p class="detail-intro">A comfortable place to bring your ideas together. Check the details, then confirm your session.</p>
+        <section class="room-day" aria-labelledby="room-availability-heading">
+          <h2 id="room-availability-heading">Availability on {date}</h2>
+          <p id="room-selection-help">Tap a free block to select 30 minutes. Tap an adjacent block to extend your booking, up to two hours. Tap a selected edge to shorten it.</p>
+          <ul class="legend" aria-label="Room availability legend"><li><span class="swatch free"></span>Available</li><li><span class="swatch booked">×</span>Booked</li><li><span class="swatch mine">●</span>Yours</li><li><span class="swatch selected">✓</span>Selected</li></ul>
+          <div class="room-time-grid" role="group" aria-label={`Half-hour availability for ${room.name} on ${date}`} aria-describedby="room-selection-help" data-capacity-ok={String(people <= room.capacity)}>
+            {roomSlots.map((slot) => <TimeSlot {...slot} />)}
+          </div>
+          <p class="notice" id="room-selection-error" role="status" hidden></p>
+          {reserved.length ? <><h3>Reserved times</h3><ul class="reserved-times">{reserved.map((booking) => <li><span class:list={['swatch', booking.mine ? 'mine' : 'booked']}>{booking.mine ? '●' : '×'}</span><strong>{booking.start.slice(11)}–{booking.end.slice(11)}</strong><span>{booking.mine ? 'Your booking' : 'Booked'}</span></li>)}</ul></> : <p>No reservations for this space on this date.</p>}
+          <a href={back}>Compare all spaces on the timetable →</a>
+        </section>
+        <h2>What this space offers</h2>
+        <div class="detail-features"><span>◌ &nbsp; Up to {room.capacity} people</span><span>⌁ &nbsp; {room.floor}</span>{room.accessible && <span>♿ &nbsp; Accessible room</span>}{room.features.map((feature) => <span>✓ &nbsp; {feature}</span>)}</div>
+      </section>
+      <aside class="booking-panel" aria-label="Booking summary">
+        <span class="section-kicker">YOUR SESSION</span>
+        <h2 id="booking-heading">{available ? "Ready to book?" : "Choose a time"}</h2>
+        <div class="summary-row"><span>Date</span><strong>{date}</strong></div>
+        <div class="summary-row"><span>Time</span><strong id="summary-time">{picked ? `${time} – ${end.slice(11)}` : "Select a time above"}</strong></div>
+        <div class="summary-row"><span>Duration</span><strong id="summary-duration">{picked ? pickDuration === 0.5 ? "30 minutes" : `${pickDuration} ${pickDuration === 1 ? "hour" : "hours"}` : "—"}</strong></div>
+        <div class="summary-row"><span>Group size</span><strong>{people} {people === 1 ? "person" : "people"}</strong></div>
+        <div class="summary-row"><span>Location</span><strong>{room.library} Library</strong></div>
+        <p class="panel-note">Each ANU email can book up to 2 hours per day across all libraries.</p>
+        {notice === "email-invalid" && <p class="notice" role="alert">Enter an ANU address in the form u1234567@anu.edu.au in both fields.</p>}
+        {notice === "email-mismatch" && <p class="notice" role="alert">The two email addresses did not match. Check them and try again.</p>}
+        {notice === "daily-limit" && <p class="notice" role="alert">This ANU email has reached its 2-hour limit for this date. Choose a shorter booking or another day.</p>}
+        <form id="detail-booking-form" method="post" action="/api/bookings" hidden={!available}>
+          <input type="hidden" name="room" value={room.id} /><input type="hidden" name="date" value={date} /><input type="hidden" name="time" value={time} /><input type="hidden" name="duration" value={pickDuration} /><input type="hidden" name="people" value={people} />
+          {demoEmail ? <div class="booking-email-field"><label for="booking-email">Booking as</label><input id="booking-email" name="email" type="email" value={demoEmail} readonly /><p class="panel-note">To use a different address, <a href="/login">switch demo account</a>.</p></div> : <>
+            <div class="booking-email-field"><label for="booking-email">ANU email</label><input id="booking-email" name="email" type="email" inputmode="email" autocomplete="email" autocapitalize="none" spellcheck="false" placeholder="u1234567@anu.edu.au" pattern="[uU][0-9]{7}@anu[.]edu[.]au" maxlength="19" required /></div>
+            <div class="booking-email-field"><label for="booking-email-confirm">Confirm ANU email</label><input id="booking-email-confirm" name="confirmEmail" type="email" inputmode="email" autocomplete="email" autocapitalize="none" spellcheck="false" placeholder="u1234567@anu.edu.au" pattern="[uU][0-9]{7}@anu[.]edu[.]au" maxlength="19" required /></div>
+          </>}
+          <p class="panel-note">{demoEmail ? "This demo booking will appear under your current email account." : "Check both addresses before confirming."} {mailConfigured ? "A booking confirmation will be sent to this email." : "Email delivery is being set up; your booking will be saved here, but no email can be sent yet."}</p>
+          <button class="button button-dark confirm-button" type="submit">Confirm booking <span aria-hidden="true">↗</span></button>
+        </form>
+        <p id="selection-prompt" class="panel-note" hidden={picked}>Select a free half-hour block above to begin.</p>
+        <div id="selection-unavailable" class="notice" role="status" hidden={!picked || available}>This selection is unavailable. Choose another free block or <a href={back}>compare spaces</a>.</div>
+        <p class="panel-note">This is a demo reservation in StudySpace only. It does not reserve an ANU Library room.</p>
+      </aside>
+    </div>
+  </main>
+</Site>
+<script>
+  const grid = document.querySelector<HTMLElement>(".room-time-grid");
+  const cells = Array.from(grid?.querySelectorAll<HTMLElement>(".time-slot") || []);
+  const selectedCells = cells.filter((cell) => cell.classList.contains("is-selected"));
+  let selection: [number, number] | null = selectedCells.length
+    ? [cells.indexOf(selectedCells[0]), cells.indexOf(selectedCells[selectedCells.length - 1])]
+    : null;
+  const form = document.querySelector<HTMLFormElement>("#detail-booking-form");
+  const hint = document.querySelector<HTMLElement>("#room-selection-error");
+  const heading = document.querySelector<HTMLElement>("#booking-heading");
+  const summaryTime = document.querySelector<HTMLElement>("#summary-time");
+  const summaryDuration = document.querySelector<HTMLElement>("#summary-duration");
+  const prompt = document.querySelector<HTMLElement>("#selection-prompt");
+  const unavailable = document.querySelector<HTMLElement>("#selection-unavailable");
+  const email = form?.querySelector<HTMLInputElement>('input[name="email"]');
+  const confirmedEmail = form?.querySelector<HTMLInputElement>('input[name="confirmEmail"]');
+  const checkEmail = () => {
+    if (!email || !confirmedEmail) return;
+    confirmedEmail.setCustomValidity(email.value.trim().toLowerCase() === confirmedEmail.value.trim().toLowerCase() ? "" : "The two ANU email addresses must match.");
+  };
+  email?.addEventListener("input", checkEmail);
+  confirmedEmail?.addEventListener("input", checkEmail);
+  form?.addEventListener("submit", (event) => {
+    checkEmail();
+    if (!confirmedEmail?.reportValidity()) event.preventDefault();
+  });
+
+  grid?.addEventListener("click", (event) => {
+    if (!(event.target instanceof Element)) return;
+    const link = event.target.closest<HTMLAnchorElement>("a.time-slot.free");
+    if (!link || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+    event.preventDefault();
+    if (!form || !hint || !heading || !summaryTime || !summaryDuration || !prompt || !unavailable) return;
+
+    const index = cells.indexOf(link);
+    hint.hidden = true;
+    if (!selection) selection = [index, index];
+    else {
+      const [first, last] = selection;
+      if (index === first && index === last) selection = null;
+      else if (index === first) selection = [first + 1, last];
+      else if (index === last) selection = [first, last - 1];
+      else if (index === first - 1 || index === last + 1) {
+        if (last - first + 1 >= 4) {
+          hint.textContent = "Bookings can be up to two hours. Tap a selected edge to shorten the time first.";
+          hint.hidden = false;
+          return;
+        }
+        selection = [Math.min(first, index), Math.max(last, index)];
+      } else selection = [index, index];
+    }
+
+    cells.forEach((cell, cellIndex) => {
+      if (!(cell instanceof HTMLAnchorElement)) return;
+      const selected = !!selection && cellIndex >= selection[0] && cellIndex <= selection[1];
+      cell.classList.toggle("is-selected", selected);
+      if (selected) cell.setAttribute("aria-current", "true");
+      else cell.removeAttribute("aria-current");
+      cell.setAttribute("aria-label", `${cell.dataset.label}, ${cell.dataset.time}–${cell.dataset.end}, ${selected ? "selected" : "available"} half-hour block`);
+    });
+
+    const url = new URL(window.location.href);
+    if (!selection) {
+      heading.textContent = "Choose a time";
+      summaryTime.textContent = "Select a time above";
+      summaryDuration.textContent = "—";
+      form.hidden = true;
+      prompt.hidden = false;
+      unavailable.hidden = true;
+      url.searchParams.delete("picked");
+      url.searchParams.delete("pickDuration");
+      url.searchParams.delete("time");
+    } else {
+      const [first, last] = selection;
+      const start = cells[first].dataset.time || "";
+      const end = cells[last].dataset.end || "";
+      const duration = (last - first + 1) / 2;
+      const canFit = grid?.dataset.capacityOk === "true";
+      heading.textContent = canFit ? "Ready to book?" : "Choose another space";
+      summaryTime.textContent = `${start} – ${end}`;
+      summaryDuration.textContent = duration === 0.5 ? "30 minutes" : `${duration} ${duration === 1 ? "hour" : "hours"}`;
+      form.querySelector<HTMLInputElement>('input[name="time"]')!.value = start;
+      form.querySelector<HTMLInputElement>('input[name="duration"]')!.value = String(duration);
+      form.hidden = !canFit;
+      prompt.hidden = true;
+      unavailable.hidden = canFit;
+      url.searchParams.set("picked", "1");
+      url.searchParams.set("time", start);
+      url.searchParams.set("pickDuration", String(duration));
+    }
+    window.history.replaceState(null, "", url);
+  });
+</script>

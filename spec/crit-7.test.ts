@@ -1,33 +1,52 @@
 import { describe, expect, inject, it } from "vitest";
 
-// Turns "the core flow persists across a reload" (crit 7's spec) into a
-// concrete check for this app's system: ANU room booking. Create a booking,
-// reload, and it's still there. Starts red — there's no /api/bookings yet.
 const baseUrl = inject("baseUrl");
+const room = "Study Room 1.01";
+const selection = new URLSearchParams({ room, date: "2030-10-01", time: "09:00", duration: "2", people: "4" });
+const email = "u1111111@anu.edu.au";
 
-describe("room booking", () => {
-  const room = `spec room ${process.hrtime.bigint()}`;
+let cookie = "";
+const post = (body: URLSearchParams, withOwner = true) => {
+  const requestBody = new URLSearchParams(body);
+  if (requestBody.get("action") !== "cancel") {
+    requestBody.set("email", email);
+    requestBody.set("confirmEmail", email);
+  }
+  return fetch(new URL("/api/bookings", baseUrl), {
+    method: "POST", headers: { origin: baseUrl, ...(withOwner && cookie ? { cookie } : {}) }, body: requestBody, redirect: "manual",
+  });
+};
 
-  // Astro checks form POSTs carry a same-origin Origin header (CSRF
-  // protection); browsers send it automatically, a bare fetch doesn't.
-  const post = (path: string, body: URLSearchParams) =>
-    fetch(new URL(path, baseUrl), {
-      method: "POST",
-      headers: { origin: baseUrl },
-      body,
-      redirect: "manual",
+describe("library booking journey", () => {
+  it("creates a reservation that survives a new page load", async () => {
+    const result = await post(selection);
+    expect(result.status).toBe(303);
+    expect(result.headers.get("location")).toContain("/bookings");
+    cookie = result.headers.get("set-cookie")?.split(";")[0] || "";
+    expect(cookie).toContain("studyspace_id=");
+    const guest = await fetch(new URL("/bookings", baseUrl), { headers: { cookie }, redirect: "manual" });
+    expect(guest.headers.get("location")).toBe("/login");
+    const loggedIn = await fetch(new URL("/api/session", baseUrl), {
+      method: "POST", headers: { origin: baseUrl }, body: new URLSearchParams({ email }), redirect: "manual",
     });
+    cookie = loggedIn.headers.getSetCookie().find((value) => value.startsWith("studyspace_demo_session="))?.split(";")[0] || "";
+    expect(cookie).toContain("studyspace_demo_session=");
 
-  it("accepts a booking", async () => {
-    const res = await post(
-      "/api/bookings",
-      new URLSearchParams({ room, start: "2026-10-01T09:00", end: "2026-10-01T10:00" }),
-    );
-    expect([200, 201, 303]).toContain(res.status);
+    const page = await fetch(new URL("/bookings", baseUrl), { headers: { cookie } });
+    expect(await page.text()).toContain(room);
   });
 
-  it("persists the booking: a fresh page load still shows it", async () => {
-    const res = await fetch(baseUrl);
-    expect(await res.text()).toContain(room);
+  it("rejects an overlapping booking and frees the time after cancellation", async () => {
+    const conflict = await post(new URLSearchParams({ room, date: "2030-10-01", time: "10:00", duration: "1", people: "4" }), false);
+    expect(conflict.headers.get("location")).toContain("notice=conflict");
+
+    const page = await fetch(new URL("/bookings", baseUrl), { headers: { cookie } });
+    const html = await page.text();
+    const id = html.match(/name="id" value="(\d+)"/)?.[1];
+    expect(id).toBeTruthy();
+    const cancelled = await post(new URLSearchParams({ action: "cancel", id: id! }));
+    expect(cancelled.status).toBe(303);
+    const retry = await post(selection);
+    expect(retry.headers.get("location")).toContain("/bookings");
   });
 });

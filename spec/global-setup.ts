@@ -34,6 +34,8 @@ export default async function setup(project: TestProject): Promise<() => void> {
       HOST: "127.0.0.1",
       PORT: String(port),
       DATABASE_PATH: join(mkdtempSync(join(tmpdir(), "spec-db-")), "test.db"),
+      RESEND_API_KEY: "",
+      BOOKING_EMAIL_FROM: "",
     },
     stdio: "ignore",
   });

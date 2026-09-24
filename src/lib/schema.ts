@@ -16,3 +16,24 @@ export const messages = sqliteTable("messages", {
 });
 
 export type Message = typeof messages.$inferSelect;
+
+export const bookings = sqliteTable("bookings", {
+  id: int().primaryKey({ autoIncrement: true }),
+  owner: text().notNull().default(""),
+  email: text().notNull().default(""),
+  room: text().notNull(),
+  start: text().notNull(),
+  end: text().notNull(),
+  createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
+  cancelledAt: text("cancelled_at"),
+});
+
+export type Booking = typeof bookings.$inferSelect;
+
+// Opaque browser sessions for the deliberately email-only demo login.
+// The token itself never goes into the database or a URL.
+export const demoSessions = sqliteTable("demo_sessions", {
+  tokenHash: text("token_hash").primaryKey(),
+  email: text().notNull(),
+  expiresAt: int("expires_at").notNull(),
+});

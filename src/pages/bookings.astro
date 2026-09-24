@@ -1,0 +1,31 @@
+---
+import Site from "../layouts/Site.astro";
+import { listBookingsByEmail } from "../lib/db";
+import { rooms } from "../lib/rooms";
+import { currentDemoEmail } from "../lib/session";
+const demoEmail = currentDemoEmail(Astro.cookies);
+const notice = Astro.url.searchParams.get("notice");
+if (!demoEmail) return Astro.redirect(`/login${notice ? `?notice=${encodeURIComponent(notice)}` : ""}`);
+const current = listBookingsByEmail(demoEmail).sort((a, b) => a.start.localeCompare(b.start));
+---
+<Site title="My bookings" active="bookings">
+  <main class="bookings-page">
+    <div class="page-heading"><span class="section-kicker">YOUR STUDY PLANS</span><h1>My bookings<span class="title-dot">.</span></h1><p>Your reservations across all four libraries. Free up your space when plans change.</p></div>
+    <p class="notice" role="note">Showing demo bookings for <strong>{demoEmail}</strong>, including reservations made in other browsers. This email-only login does not verify identity; anyone who enters the address can view or cancel these bookings. <a href="/login">Switch account</a>.</p>
+    {notice === "logged-in" && <p class="success-notice" role="status">Demo login complete. Reservations made with this email are shown below.</p>}
+    {notice === "booked" && <p class="success-notice" role="status">Your demo booking is confirmed. A confirmation email has been submitted to your ANU address.</p>}
+    {notice === "booked-mail-pending" && <p class="success-notice" role="status">Your demo booking is confirmed. Email delivery is not configured yet, so no email was sent. Your booking is listed below.</p>}
+    {notice === "booked-mail-failed" && <p class="notice" role="alert">Your demo booking is confirmed, but its email could not be sent. Your booking is listed below.</p>}
+    {notice === "cancelled" && <p class="success-notice" role="status">Booking cancelled. That time is available again.</p>}
+    {current.length ? <div class="booking-list">{current.map((booking) => {
+      const room = rooms.find((value) => value.id === booking.room);
+      return <article class="booking-item">
+        <div class="booking-date"><strong>{booking.start.slice(8,10)}</strong><span>{new Intl.DateTimeFormat("en-AU", { month:"short", timeZone:"UTC" }).format(new Date(`${booking.start.slice(0,10)}T12:00:00Z`))}</span></div>
+        <div class="booking-info"><span class="booking-status">● Confirmed · Demo</span><h2>{room?.name || booking.room}</h2><p>{room?.library || "Library"} · {booking.start.slice(0,10)} · {booking.start.slice(11)}–{booking.end.slice(11)}</p><a class="booking-calendar-link" href={`/?library=${room?.library || 'All'}&date=${booking.start.slice(0,10)}&category=All`}>See on timetable →</a></div>
+        <form method="post" action="/api/bookings"><input type="hidden" name="action" value="cancel" /><input type="hidden" name="id" value={booking.id} /><button class="cancel-button" type="submit" aria-label={`Cancel booking for ${booking.room} on ${booking.start.slice(0,10)} at ${booking.start.slice(11)}`}>Cancel booking</button></form>
+      </article>;
+    })}</div> : <div class="empty-state"><span class="empty-icon" aria-hidden="true">◇</span><h2>No bookings yet</h2><p>Choose a free start time on the library timetable.</p><a class="button button-dark" href="/">Browse availability ↗</a></div>}
+    <p class="shared-note">Demo sessions last 30 days on this browser. This is not ANU authentication.</p>
+  </main>
+</Site>
+<style>.booking-calendar-link { display:inline-block; color:#79520e; font-size:11px; margin-top:9px; text-decoration:none; }</style>

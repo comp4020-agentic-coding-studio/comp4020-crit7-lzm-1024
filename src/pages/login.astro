@@ -1,0 +1,32 @@
+---
+import Site from "../layouts/Site.astro";
+import { currentDemoEmail } from "../lib/session";
+
+const email = currentDemoEmail(Astro.cookies);
+const notice = Astro.url.searchParams.get("notice");
+---
+<Site title="Demo login" active="login">
+  <main class="login-page">
+    <span class="section-kicker">YOUR STUDYSPACE ACCOUNT</span>
+    <h1>Demo login<span class="title-dot">.</span></h1>
+    <p>Use your ANU email to see StudySpace reservations made with that address across browsers. No password is needed in this student prototype.</p>
+    <p class="notice" role="note"><strong>Demo only — this does not verify your identity.</strong> Anyone who enters an email address can view and cancel its StudySpace reservations. Do not use this with real library bookings or sensitive information.</p>
+    {notice === "email-invalid" && <p class="notice" role="alert">Enter an address like u1234567@anu.edu.au (u followed by seven digits).</p>}
+    {notice === "logged-out" && <p class="success-notice" role="status">You are signed out of the demo account on this browser.</p>}
+    {notice === "login-required" && <p class="notice" role="status">Log in with the booking's ANU email to view or cancel your reservations.</p>}
+    {notice === "booked" && <p class="success-notice" role="status">Your demo booking was saved and a confirmation email was submitted. Log in with the same ANU email to view it.</p>}
+    {notice === "booked-mail-pending" && <p class="success-notice" role="status">Your demo booking was saved. Email delivery is not configured, so no email was sent. Log in with the same ANU email to view it.</p>}
+    {notice === "booked-mail-failed" && <p class="notice" role="alert">Your demo booking was saved, but its email could not be sent. Log in with the same ANU email to view it.</p>}
+    {email ? <section class="login-card" aria-label="Current demo account">
+      <h2>You're using {email}</h2>
+      <p>All demo bookings under this email are listed in one place.</p>
+      <a class="button button-dark" href="/bookings">View my bookings <span aria-hidden="true">↗</span></a>
+      <form method="post" action="/api/session"><input type="hidden" name="action" value="logout" /><button class="cancel-button" type="submit">Sign out or switch email</button></form>
+    </section> : <form class="login-card" method="post" action="/api/session">
+      <label for="login-email">ANU email</label>
+      <input id="login-email" name="email" type="email" inputmode="email" autocomplete="email" autocapitalize="none" spellcheck="false" placeholder="u1234567@anu.edu.au" pattern="[uU][0-9]{7}@anu[.]edu[.]au" maxlength="19" required autofocus />
+      <button class="button button-dark" type="submit">Continue to my bookings <span aria-hidden="true">↗</span></button>
+      <p class="panel-note">This signs you into a demo account only. No verification email is sent.</p>
+    </form>}
+  </main>
+</Site>

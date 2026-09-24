@@ -1,53 +1,176 @@
 ---
-import { listMessages } from "../lib/db";
-import "../styles.css";
+import Site from "../layouts/Site.astro";
+import TimeSlot from "../components/TimeSlot.astro";
+import { dayBookings } from "../lib/db";
+import { categories, durations, endFor, libraries, rooms, shiftDay, slots, sydneyNowTime, sydneyToday } from "../lib/rooms";
+import { clockTime, minutes, readSearch, searchQuery } from "../lib/search";
+import { currentDemoEmail } from "../lib/session";
 
-const messages = listMessages();
+const search = readSearch(Astro.url.searchParams);
+const { date, library, category, duration, people, accessible, from, to, searched, rangeValid } = search;
+const owner = Astro.cookies.get("studyspace_id")?.value || "";
+const demoEmail = currentDemoEmail(Astro.cookies);
+const bookings = dayBookings(date, demoEmail ? "" : owner, demoEmail || "");
+const periods = [{ id: "full", name: "Full day", start: "08:00", end: "22:00" }, { id: "morning", name: "Morning", start: "08:00", end: "12:00" }, { id: "afternoon", name: "Afternoon", start: "12:00", end: "17:00" }, { id: "evening", name: "Evening", start: "17:00", end: "22:00" }];
+const period = periods.find((value) => value.id === Astro.url.searchParams.get("period")) || periods[0];
+const visibleSlots = slots().filter((time) => time >= period.start && time < period.end);
+const filtered = rooms.filter((room) => (library === "All" || room.library === library) && (category === "All" || room.category === category) && room.capacity >= people && (!accessible || room.accessible));
+const nowTime = sydneyNowTime();
+const futureDate = date > sydneyToday() || date === sydneyToday();
+const requestedInPast = !futureDate || (date === sydneyToday() && from <= nowTime);
+const freeFor = (roomId: string, start: string, end: string) => !bookings.some((booking) => booking.room === roomId && booking.start < `${date}T${end}` && booking.end > `${date}T${start}`);
+const availableRooms = searched && rangeValid && !requestedInPast
+  ? filtered.filter((room) => freeFor(room.id, from, to)) : [];
+const nearby = searched && rangeValid && futureDate && availableRooms.length === 0
+  ? slots().flatMap((start) => durations.filter((length) => length <= duration).map((length) => {
+      const end = clockTime(minutes(start) + length * 60);
+      if (end > "22:00" || (date === sydneyToday() && start <= nowTime) || (start === from && end === to)) return null;
+      const count = filtered.filter((room) => freeFor(room.id, start, end)).length;
+      return count ? { from: start, to: end, count, score: Math.abs(minutes(start) - minutes(from)) + (duration - length) * 30 } : null;
+    })).filter((candidate): candidate is { from: string; to: string; count: number; score: number } => candidate !== null)
+    .sort((a, b) => a.score - b.score || b.count - a.count || b.to.localeCompare(a.to))
+    .filter((candidate, index, all) => all.findIndex((other) => other.from === candidate.from) === index)
+    .slice(0, 3) : [];
+const rows = filtered.map((room) => {
+  const reserved = bookings.filter((booking) => booking.room === room.id);
+  const times = visibleSlots.map((time) => {
+    const start = `${date}T${time}`;
+    const slotEnd = endFor(date, time, 0.5);
+    const requestedEnd = endFor(date, time, duration);
+    const booking = reserved.find((value) => value.start < slotEnd && value.end > start);
+    const past = date < sydneyToday() || (date === sydneyToday() && time <= nowTime);
+    const status = booking ? (booking.mine ? "mine" : "booked") : past ? "past" : "free";
+    const canBook = status === "free" && requestedEnd.slice(11) <= "22:00" && !reserved.some((value) => value.start < requestedEnd && value.end > start);
+    const href = `/rooms/${encodeURIComponent(room.id)}?${searchQuery(search, { time, period: period.id })}`;
+    return { time, end: slotEnd.slice(11), status, canBook, href, room: room.id, label: `${room.library} · ${room.name}` };
+  });
+  const reservedText = reserved.length ? reserved.map((booking) => `${booking.mine ? "Yours" : "Booked"} ${booking.start.slice(11)}–${booking.end.slice(11)}`).join(" · ") : "No bookings for this day";
+  return { room, times, reservedText };
+});
+const bookedCount = bookings.filter((booking) => filtered.some((room) => room.id === booking.room)).length;
+const notice = Astro.url.searchParams.get("notice");
+const displayDate = new Intl.DateTimeFormat("en-AU", { weekday: "long", day: "numeric", month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(`${date}T12:00:00Z`));
 ---
+<Site title="Library space availability" active="find">
+  <main class="availability-page">
+    <div class="breadcrumbs">ANU Library <span>/</span> Bookings <span>/</span> Space availability</div>
+    <section class="calendar-intro">
+      <div><span class="section-kicker">MAKE SPACE FOR YOUR NEXT IDEA</span><h1>Book a library space<span class="title-dot">.</span></h1><p>Choose a time range and see which spaces are free for the whole session.</p></div>
+      <div class="intro-note"><strong>4 libraries. One view.</strong><span>Study rooms, booths & equipment</span></div>
+    </section>
 
-<!doctype html>
-<html lang="en-AU">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>COMP4020 prototype</title>
-  </head>
-  <body>
-    <nav aria-label="site">
-      <a href="/">Guestbook</a>
-      <a href="/readme/">About</a>
+    <nav class="library-tabs" aria-label="Choose a library">
+      {["All", ...libraries].map((name) => <a href={`/?${searchQuery(search, { library: name, period: period.id })}`} aria-current={library === name ? "page" : undefined}>{name === "All" ? "All libraries" : `${name} Library`}<span>{rooms.filter((room) => name === "All" || room.library === name).length}</span></a>)}
     </nav>
-    <main>
-      <h1>Guestbook</h1>
-      <p>
-        A minimal full-stack starter: messages live in SQLite on the machine's
-        volume (state survives a reload and a redeploy), and new messages
-        appear in every open tab over a server-sent-events stream — open this
-        page twice and sign it in one. Replace all of this with your own
-        prototype.
-      </p>
-      <form method="post" action="/api/messages">
-        <label for="body">Leave a message</label>
-        <input id="body" name="body" required maxlength="500" />
-        <button>Sign</button>
-      </form>
-      <ul id="messages">
-        {messages.map((message) => <li>{message.body}</li>)}
-      </ul>
-    </main>
-    <script>
-      // The live half of the demo: subscribe to the SSE stream and prepend
-      // messages as they arrive. The form itself needs none of this — its
-      // POST + redirect re-renders the submitting tab from SQLite; this
-      // stream is how every other tab finds out.
-      const list = document.querySelector("#messages");
-      const source = new EventSource("/api/events");
-      source.addEventListener("message", (event) => {
-        const message = JSON.parse(event.data);
-        const item = document.createElement("li");
-        item.textContent = message.body;
-        list?.prepend(item);
+
+    <form class="calendar-filters" method="get" action="/#search-results">
+      <input type="hidden" name="library" value={library} /><input type="hidden" name="period" value={period.id} /><input type="hidden" name="search" value="1" />
+      <div class="field"><label for="date">Date</label><input id="date" name="date" type="date" value={date} required /></div>
+      <div class="field"><label for="from">Start time</label><select id="from" name="from">{slots().slice(0, -1).map((value) => <option value={value} selected={from === value}>{value}</option>)}</select></div>
+      <div class="field"><label for="to">End time</label><select id="to" name="to" required aria-describedby="time-range-hint"><option value="" selected={!rangeValid}>Choose an end time</option>{slots().slice(1).map((value) => <option value={value} selected={to === value}>{value}</option>)}</select><small class="field-hint" id="time-range-hint" role={rangeValid ? undefined : "alert"} hidden={rangeValid}>Choose an end time after the start, within two hours.</small></div>
+      <div class="field"><label for="category">Space type</label><select id="category" name="category"><option value="All" selected={category === "All"}>All spaces</option>{categories.map((value) => <option selected={category === value}>{value}</option>)}</select></div>
+      <div class="field"><label for="people">Group size</label><select id="people" name="people">{[1,2,3,4,5,6,7,8].map((value) => <option value={value} selected={people === value}>{value} {value === 1 ? "person" : "people"}</option>)}</select></div>
+      <button class="button button-dark" type="submit">Find available spaces <span aria-hidden="true">↗</span></button>
+      <label class="check-field"><input type="checkbox" name="accessible" value="yes" checked={accessible} /> Accessible spaces only</label>
+    </form>
+
+    {searched && <section class="search-results" id="search-results" aria-live="polite" aria-labelledby="results-heading">
+      <span class="section-kicker">YOUR SEARCH · {date}</span>
+      <h2 id="results-heading">{rangeValid ? `${from}–${to}` : "Check your time range"}</h2>
+      {!rangeValid ? <p class="notice" role="alert">Choose an end time after the start time, up to two hours later.</p>
+      : requestedInPast ? <p class="notice">That time has passed. Choose a later time or another date.</p>
+      : availableRooms.length ? <><p>{availableRooms.length} {availableRooms.length === 1 ? "space is" : "spaces are"} available for the entire requested time.</p><div class="result-grid">{availableRooms.map((room) => <article class="result-card"><span class="result-status">AVAILABLE · {from}–{to}</span><h3>{room.name}</h3><p>{room.library} Library · Up to {room.capacity} people</p><a href={`/rooms/${encodeURIComponent(room.id)}?${searchQuery(search, { time: from })}`}>View and book this space →</a></article>)}</div></>
+      : <><p class="no-exact-match">No spaces are available for the whole {from}–{to} period with these filters.</p>{nearby.length ? <><h3>Nearby available times</h3><p>These time ranges may be shorter than your request. Select one to see its available spaces.</p><div class="recommendation-list">{nearby.map((window) => <a href={`/?${searchQuery(search, { from: window.from, to: window.to, search: "1" })}#search-results`}><strong>{window.from}–{window.to}</strong><span>{window.count} {window.count === 1 ? "space" : "spaces"} available</span><span aria-hidden="true">→</span></a>)}</div></> : <p>Try another library, date, group size or space type.</p>}</>}
+    </section>}
+
+    <section class="schedule-section" aria-labelledby="schedule-heading">
+      <div class="schedule-heading"><div><span class="section-kicker">{library === "All" ? "ACROSS CAMPUS" : `${library.toUpperCase()} LIBRARY`}</span><h2 id="schedule-heading">{displayDate}</h2><p>{rows.length} matching spaces <span>·</span> {bookedCount} {bookedCount === 1 ? "reservation" : "reservations"} <span>·</span> All times Canberra</p></div><div class="date-navigation"><a aria-label="Previous day" href={`/?${searchQuery(search, { date: shiftDay(date,-1), period: period.id })}`}>←</a><a href={`/?${searchQuery(search, { date: sydneyToday(), period: period.id })}`}>Today</a><a aria-label="Next day" href={`/?${searchQuery(search, { date: shiftDay(date,1), period: period.id })}`}>→</a></div></div>
+      <div class="calendar-toolbar">
+        <nav class="period-tabs" aria-label="Time of day">{periods.map((value) => <a href={`/?${searchQuery(search, { period: value.id })}`} aria-current={period.id === value.id ? "page" : undefined}>{value.name}</a>)}</nav>
+        <ul class="legend" aria-label="Availability legend"><li><span class="swatch free"></span>Available</li><li><span class="swatch booked">×</span>Booked</li><li><span class="swatch mine">●</span>Yours</li><li><span class="swatch selected">✓</span>Selected</li></ul>
+      </div>
+      <nav class="duration-picker" aria-label="Booking duration"><span>BOOK FOR</span>{durations.map((value) => <a href={`/?${searchQuery(search, { duration: String(value), period: period.id })}`} aria-current={duration === value ? "true" : undefined}>{value === 0.5 ? "30 min" : `${value} ${value === 1 ? "hour" : "hours"}`}</a>)}</nav>
+      <p class="schedule-help">Each block is 30 minutes. Select a free start time for a {duration === 0.5 ? "30-minute" : `${duration}-hour`} booking. Grey striped blocks are already booked.</p>
+      {notice && <p class="notice" role="status">{notice === "conflict" ? "That time was just booked. The timetable below has been refreshed; choose another open slot." : "Please select a valid future time with enough room for your whole booking."}</p>}
+      <p id="selection-error" class="notice" role="alert" hidden></p>
+      {rows.length === 0 ? <div class="empty-state"><h3>No spaces match these filters</h3><p>Try a smaller group size, another space type or another library.</p></div> : <>
+        <div class="schedule-scroll">
+          <table class:list={["schedule-table", `period-${period.id}`]}>
+            <caption class="sr-only">Space availability at {library} on {date}. Available slots are links. Booked slots cannot be selected.</caption>
+            <thead><tr><th scope="col" class="room-column">Space <small>Capacity & bookings</small></th>{visibleSlots.map((time) => <th scope="col" class="time-heading">{time}</th>)}</tr></thead>
+            <tbody>{rows.map(({ room, times, reservedText }) => <tr><th scope="row" class="room-column"><a href={`/rooms/${encodeURIComponent(room.id)}?${searchQuery(search)}`}>{room.name}</a><span>{room.library} · {room.capacity} {room.capacity === 1 ? "person" : "people"}{room.accessible ? " · ♿" : ""}</span><small>{reservedText}</small></th>{times.map((slot) => <td><TimeSlot {...slot} /></td>)}</tr>)}</tbody>
+          </table>
+        </div>
+        <div class="mobile-schedules">{rows.map(({ room, times, reservedText }) => <details class="mobile-room"><summary><span><strong>{room.name}</strong><span>{room.library} · Up to {room.capacity} people</span><small>{reservedText}</small></span><span class="expand-label">Times ＋</span></summary><div class="mobile-time-grid">{times.map((slot) => <TimeSlot {...slot} />)}</div></details>)}</div>
+      </>}
+      <div class="schedule-footer"><span>Prototype schedule · Reservations made here are not ANU Library bookings.</span><a href={`/?${searchQuery(search, { period: period.id })}`}>Refresh availability ↻</a></div>
+    </section>
+
+    <aside class="selection-bar" id="selection-bar" hidden aria-label="Selected reservation">
+      <div aria-live="polite"><span class="section-kicker">YOUR SELECTION</span><strong id="selection-room"></strong><span id="selection-time"></span></div><div class="selection-actions"><button type="button" id="clear-selection">Clear</button><a class="button button-dark" id="continue-booking" href="/bookings">Continue to booking ↗</a></div>
+    </aside>
+  </main>
+</Site>
+<script is:inline define:vars={{ duration, date }}>
+  const searchForm = document.querySelector(".calendar-filters");
+  const startSelect = document.getElementById("from");
+  const endSelect = document.getElementById("to");
+  const searchButton = searchForm.querySelector('button[type="submit"]');
+  const timeRangeHint = document.getElementById("time-range-hint");
+  const endOptions = [...endSelect.options].filter((option) => option.value);
+  const asMinutes = (value) => {
+    const [hour, minute] = value.split(":").map(Number);
+    return hour * 60 + minute;
+  };
+  const validateRange = (repair = false) => {
+    const start = asMinutes(startSelect.value);
+    const allowed = endOptions.filter((option) => asMinutes(option.value) > start && asMinutes(option.value) - start <= 120);
+    endOptions.forEach((option) => { option.disabled = !allowed.includes(option); });
+    const valid = allowed.some((option) => option.value === endSelect.value);
+    if (!valid && repair && allowed.length) endSelect.value = allowed[0].value;
+    const ready = valid || (repair && allowed.length > 0);
+    searchButton.disabled = !ready;
+    endSelect.setAttribute("aria-invalid", String(!ready));
+    timeRangeHint.hidden = ready;
+    if (!ready) endSelect.value = "";
+  };
+  validateRange();
+  startSelect.addEventListener("change", () => validateRange(true));
+  endSelect.addEventListener("change", () => validateRange());
+  searchForm.addEventListener("submit", (event) => {
+    validateRange();
+    if (searchButton.disabled) event.preventDefault();
+  });
+
+  const bar = document.getElementById("selection-bar");
+  const error = document.getElementById("selection-error");
+  const clear = () => {
+    document.querySelectorAll(".time-slot.is-selected").forEach((cell) => cell.classList.remove("is-selected"));
+    bar.hidden = true;
+    error.hidden = true;
+  };
+  document.getElementById("clear-selection").addEventListener("click", clear);
+  document.querySelectorAll("a.time-slot").forEach((link) => {
+    link.addEventListener("click", (event) => {
+      if (event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+      event.preventDefault();
+      clear();
+      if (link.dataset.canBook !== "true") {
+        error.textContent = "That block is free, but the full selected duration overlaps a booking or goes past 22:00. Choose an earlier time or shorten the booking length.";
+        error.hidden = false;
+        error.scrollIntoView({ block: "nearest", behavior: "auto" });
+        return;
+      }
+      const [hours, minutes] = link.dataset.time.split(":").map(Number);
+      const endMinutes = hours * 60 + minutes + duration * 60;
+      const endTime = String(Math.floor(endMinutes / 60)).padStart(2, "0") + ":" + String(endMinutes % 60).padStart(2, "0");
+      document.querySelectorAll(".time-slot").forEach((cell) => {
+        if (cell.dataset.room === link.dataset.room && cell.dataset.time >= link.dataset.time && cell.dataset.time < endTime) cell.classList.add("is-selected");
       });
-    </script>
-  </body>
-</html>
+      document.getElementById("selection-room").textContent = link.dataset.label;
+      document.getElementById("selection-time").textContent = date + " · " + link.dataset.time + "–" + endTime;
+      document.getElementById("continue-booking").href = link.href;
+      bar.hidden = false;
+    });
+  });
+</script>

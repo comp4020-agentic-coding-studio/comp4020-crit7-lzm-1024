@@ -1,0 +1,6 @@
+---
+interface Props { room: string; time: string; end: string; status: string; canBook: boolean; href: string; label: string; selected?: boolean }
+const { room, time, end, status, canBook, href, label, selected = false } = Astro.props;
+---
+{status === 'free' ? <a class:list={['time-slot', 'free', selected && 'is-selected']} href={href} data-room={room} data-time={time} data-end={end} data-can-book={String(canBook)} data-label={label} title={`${label} · ${time}–${end}: available${canBook ? '' : ' (selected duration does not fit)'}`} aria-label={`${label}, ${time}–${end}, available${selected ? ', selected time' : ''}${canBook ? ', select start time' : ', selected duration does not fit'}`}><span class="slot-clock">{time}</span><span class="slot-symbol" aria-hidden="true">＋</span></a>
+: <span class:list={['time-slot', status]} data-room={room} data-time={time} title={`${label} · ${time}–${end}: ${status === 'mine' ? 'your booking' : status === 'booked' ? 'booked' : 'past time'}`} aria-label={`${label}, ${time}–${end}, ${status === 'mine' ? 'your booking' : status === 'booked' ? 'booked' : 'past time'}`}><span class="slot-clock">{time}</span><span class="slot-symbol" aria-hidden="true">{status === 'mine' ? '●' : status === 'booked' ? '×' : '–'}</span></span>}

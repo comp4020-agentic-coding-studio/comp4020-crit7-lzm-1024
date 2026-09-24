@@ -1,0 +1,37 @@
+---
+import "../styles.css";
+import { currentDemoEmail } from "../lib/session";
+interface Props { title: string; active?: "find" | "bookings" | "about" | "login" }
+const { title, active } = Astro.props;
+const demoEmail = currentDemoEmail(Astro.cookies);
+---
+<!doctype html>
+<html lang="en-AU">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#000000" />
+    <title>{title} · StudySpace</title>
+  </head>
+  <body>
+    <aside class="prototype-strip" aria-label="Prototype notice">Student design prototype <span>Independent demonstration · not the official ANU booking service</span></aside>
+    <div class="site-shell">
+      <header class="site-header">
+        <a class="brand" href="/" aria-label="StudySpace home">
+          <span class="brand-logo"><img src="/anu-library-banner.png" alt="Australian National University — ANU Library" width="1540" height="194" /></span>
+        </a>
+        <nav aria-label="Main navigation">
+          <a href="/" aria-current={active === "find" ? "page" : undefined}>Space availability</a>
+          <a href="/bookings" aria-current={active === "bookings" ? "page" : undefined}>My bookings</a>
+          <a href="/readme/" aria-current={active === "about" ? "page" : undefined}>About</a>
+          <a href="/login" aria-current={active === "login" ? "page" : undefined}>{demoEmail ? "Account" : "Demo login"}</a>
+        </nav>
+      </header>
+      <slot />
+      <footer class="site-footer">
+        <p>StudySpace is a student prototype. Rooms and availability are demo data; bookings here are not ANU Library reservations.</p>
+        <span>Made for COMP4020 · 2026</span>
+      </footer>
+    </div>
+  </body>
+</html>
