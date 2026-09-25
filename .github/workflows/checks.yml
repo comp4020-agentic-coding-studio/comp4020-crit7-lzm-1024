@@ -142,7 +142,7 @@ jobs:
         run: |
           output=$(pnpm dlx linkinator "$APP_URL/login" \
             "$APP_URL/rooms/Study%20Room%201.01" --silent \
-            --concurrency 10 --timeout 10000)
+            --concurrency 10 --timeout 10000 2>&1)
           echo "$output"
           if ! echo "$output" | grep -Eq 'Successfully scanned [1-9][0-9]* links'; then
             echo "link check did not scan any links"; exit 1
