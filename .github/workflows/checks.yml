@@ -76,6 +76,9 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6 # for the pnpm dlx link check below
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
       - uses: superfly/flyctl-actions/setup-flyctl@fc53c09e1bc3be6f54706524e3b82c4f462f77be # 1.5
       - name: Deploy
         # --remote-only builds the Dockerfile on Fly's builders; --ha=false
@@ -92,7 +95,7 @@ jobs:
           echo "site did not return 200"; exit 1
       - name: Verify booking entry points and login guard
         run: |
-          for path in /login /rooms/Study%20Room%201.01; do
+          for path in /login /readme/ /rooms/Study%20Room%201.01; do
             code=$(curl -s -o /dev/null -w "%{http_code}" "$APP_URL$path" -m 20 || true)
             if [ "$code" != "200" ]; then
               echo "$path returned HTTP $code, expected 200"; exit 1
@@ -132,7 +135,15 @@ jobs:
             echo "prerendered routes."
             exit 1
           fi
-      - name: Check internal links on the live site
-        # Internal links only; the skip is anchored to this app's own origin
-        # so outbound links can't redden a deploy.
-        run: pnpm dlx linkinator "$APP_URL" --recurse --silent --skip "^(?!$APP_URL)"
+      - name: Check representative internal links on the live site
+        # Date navigation generates unbounded distinct URLs, so do not crawl
+        # recursively. These two entry pages link only within the app. The
+        # previous outbound-skip expression silently produced zero results.
+        run: |
+          output=$(pnpm dlx linkinator "$APP_URL/login" \
+            "$APP_URL/rooms/Study%20Room%201.01" --silent \
+            --concurrency 10 --timeout 10000)
+          echo "$output"
+          if ! echo "$output" | grep -Eq 'Successfully scanned [1-9][0-9]* links'; then
+            echo "link check did not scan any links"; exit 1
+          fi
