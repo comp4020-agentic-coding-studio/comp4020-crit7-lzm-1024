@@ -14,7 +14,7 @@ export const validWindow = (from: string, to: string) =>
 export function readSearch(params: URLSearchParams) {
   const defaults = defaultSearch();
   const date = params.get('date') || defaults.date;
-  const library = params.get('library') || 'Chifley';
+  const library = params.get('library') || 'All';
   const category = params.get('category') || 'Study rooms';
   const requestedDuration = Number(params.get('duration'));
   const fallbackDuration = durations.includes(requestedDuration) ? requestedDuration : 2;
@@ -27,7 +27,7 @@ export function readSearch(params: URLSearchParams) {
   const people = Number(params.get('people'));
   return {
     date: selectedDate,
-    library: [...libraries, 'All'].some((value) => value === library) ? library : 'Chifley',
+    library: [...libraries, 'All'].some((value) => value === library) ? library : 'All',
     category: [...categories, 'All'].some((value) => value === category) ? category : 'Study rooms',
     duration: searched && rangeValid ? (minutes(to) - minutes(from)) / 60 : fallbackDuration,
     from, to, searched, rangeValid,

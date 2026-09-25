@@ -1,0 +1,52 @@
+---
+import Site from "../layouts/Site.astro";
+import { listBookingsByEmail } from "../lib/db";
+import { rooms } from "../lib/rooms";
+import { currentDemoEmail } from "../lib/session";
+
+const email = currentDemoEmail(Astro.cookies);
+if (!email) return Astro.redirect("/login?notice=login-required");
+
+const id = Number(Astro.url.searchParams.get("id"));
+const booking = Number.isSafeInteger(id) && id > 0
+  ? listBookingsByEmail(email).find((item) => item.id === id)
+  : undefined;
+if (!booking) return Astro.redirect("/bookings");
+
+const room = rooms.find((item) => item.id === booking.room);
+const notice = Astro.url.searchParams.get("notice");
+---
+<Site title="Booking successful" active="bookings">
+  <main class="booking-success-page">
+    <span class="success-mark" aria-hidden="true">✓</span>
+    <span class="section-kicker">YOUR STUDYSPACE RESERVATION</span>
+    <h1>Booking successful<span class="title-dot">.</span></h1>
+    <p class="success-intro">Your space is booked in this StudySpace demo. You're now signed in as <strong>{email}</strong>, so you can see your bookings without entering it again.</p>
+
+    <section class="success-details" aria-label="Your booking details">
+      <div class="summary-row"><span>Space</span><strong>{room?.name || booking.room}</strong></div>
+      <div class="summary-row"><span>Library</span><strong>{room?.library || "Library"}</strong></div>
+      <div class="summary-row"><span>Date</span><strong>{booking.start.slice(0, 10)}</strong></div>
+      <div class="summary-row"><span>Time</span><strong>{booking.start.slice(11)}–{booking.end.slice(11)} (Canberra)</strong></div>
+      <div class="summary-row"><span>ANU email</span><strong>{email}</strong></div>
+    </section>
+
+    {notice === "booked" && <p class="success-notice" role="status">A confirmation email has been submitted to your ANU address.</p>}
+    {notice === "booked-mail-pending" && <p class="notice" role="status">Email delivery is not configured yet, so no confirmation email was sent. Your booking is saved and visible in My bookings.</p>}
+    {notice === "booked-mail-failed" && <p class="notice" role="alert">Your booking is saved, but the confirmation email could not be sent. You can still find it in My bookings.</p>}
+
+    <div class="success-actions"><a class="button button-dark" href="/bookings">View my bookings ↗</a><a href="/">Find another space →</a></div>
+    <p class="panel-note">This is a student prototype, not an ANU Library reservation. Email-only demo sign-in does not verify who owns the address.</p>
+  </main>
+</Site>
+<style>
+  .booking-success-page { max-width:760px; padding:56px 0 90px; }
+  .success-mark { display:grid; place-items:center; width:48px; height:48px; margin-bottom:24px; border-radius:50%; background:var(--tint); color:#79520e; font-size:26px; font-weight:800; }
+  h1 { font-size:clamp(34px,4vw,48px); margin:10px 0 18px; line-height:1.1; }
+  .success-intro { color:var(--muted); font-size:14px; line-height:1.7; margin-bottom:28px; }
+  .success-details { border:1px solid var(--line); border-top:3px solid var(--gold); background:white; padding:16px 24px; }
+  .success-details .summary-row:last-child { border-bottom:0; }
+  .success-actions { display:flex; align-items:center; gap:25px; flex-wrap:wrap; margin:26px 0; }
+  .success-actions>a:not(.button) { color:#79520e; font-size:12px; }
+  @media(max-width:680px) { .booking-success-page { padding:30px 0 65px; } .success-details { padding:10px 16px; } }
+</style>

@@ -11,7 +11,7 @@ const current = listBookingsByEmail(demoEmail).sort((a, b) => a.start.localeComp
 <Site title="My bookings" active="bookings">
   <main class="bookings-page">
     <div class="page-heading"><span class="section-kicker">YOUR STUDY PLANS</span><h1>My bookings<span class="title-dot">.</span></h1><p>Your reservations across all four libraries. Free up your space when plans change.</p></div>
-    <p class="notice" role="note">Showing demo bookings for <strong>{demoEmail}</strong>, including reservations made in other browsers. This email-only login does not verify identity; anyone who enters the address can view or cancel these bookings. <a href="/login">Switch account</a>.</p>
+    <p class="notice" role="note">Showing demo bookings for <strong>{demoEmail}</strong>, including reservations made in other browsers. This email-only login does not verify identity; anyone who enters the address can view or cancel these bookings. <a href="/login">Account</a>.</p>
     {notice === "logged-in" && <p class="success-notice" role="status">Demo login complete. Reservations made with this email are shown below.</p>}
     {notice === "booked" && <p class="success-notice" role="status">Your demo booking is confirmed. A confirmation email has been submitted to your ANU address.</p>}
     {notice === "booked-mail-pending" && <p class="success-notice" role="status">Your demo booking is confirmed. Email delivery is not configured yet, so no email was sent. Your booking is listed below.</p>}

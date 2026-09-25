@@ -13,18 +13,39 @@ const sessionCookie = (response: Response) => response.headers.getSetCookie()
 const login = (email: string) => send("/api/session", new URLSearchParams({ email }));
 
 describe("email-only demo login", () => {
+  it("shows the login form without the yellow demo warning", async () => {
+    const page = await fetch(new URL("/login", baseUrl));
+    const doc = new JSDOM(await page.text()).window.document;
+    expect(doc.querySelector(".login-page > .notice[role='note']")).toBeNull();
+    expect(doc.querySelector(".login-card .panel-note")?.textContent).toContain("No verification email is sent");
+  });
+
   it("shows cross-browser reservations for the entered address and no other address", async () => {
     const created = await send("/api/bookings", new URLSearchParams({
       room: "Study Room 1.03", date, time: "09:00", duration: "0.5", people: "1",
-      email: emailA, confirmEmail: emailA,
+      email: emailA,
     }));
-    expect(created.headers.get("location")).toContain("/bookings");
-    const guestCookie = created.headers.getSetCookie().find((value) => value.startsWith("studyspace_id="))?.split(";")[0] || "";
-    const guestPage = await fetch(new URL("/bookings?notice=booked-mail-pending", baseUrl), {
-      headers: { cookie: guestCookie }, redirect: "manual",
-    });
-    expect(guestPage.status).toBe(302);
-    expect(guestPage.headers.get("location")).toBe("/login?notice=booked-mail-pending");
+    const successUrl = new URL(created.headers.get("location")!, baseUrl);
+    expect(successUrl.pathname).toBe("/booking-success");
+    expect(successUrl.searchParams.get("notice")).toBe("booked-mail-pending");
+    const bookedCookie = sessionCookie(created);
+    expect(bookedCookie).toContain("studyspace_demo_session=");
+    const successPage = await fetch(successUrl, { headers: { cookie: bookedCookie }, redirect: "manual" });
+    expect(successPage.status).toBe(200);
+    const successDoc = new JSDOM(await successPage.text()).window.document;
+    expect(successDoc.querySelector("h1")?.textContent).toContain("Booking successful");
+    expect(successDoc.querySelector(".success-details")?.textContent).toContain("Study Room 1.03");
+    expect(successDoc.querySelector(".success-details")?.textContent).toContain(emailA);
+    const myBookings = await fetch(new URL("/bookings", baseUrl), { headers: { cookie: bookedCookie }, redirect: "manual" });
+    expect(myBookings.status).toBe(200);
+    expect(await myBookings.text()).toContain("Study Room 1.03");
+    const noSession = await fetch(successUrl, { redirect: "manual" });
+    expect(noSession.headers.get("location")).toBe("/login?notice=login-required");
+    const conflict = await send("/api/bookings", new URLSearchParams({
+      room: "Study Room 1.03", date, time: "09:00", duration: "0.5", people: "1", email: emailB,
+    }));
+    expect(conflict.headers.get("location")).toContain("notice=conflict");
+    expect(sessionCookie(conflict)).toBe("");
 
     const invalid = await login("name@anu.edu.au");
     expect(invalid.headers.get("location")).toBe("/login?notice=email-invalid");
@@ -33,6 +54,11 @@ describe("email-only demo login", () => {
     const other = await login(emailB);
     const otherCookie = sessionCookie(other);
     expect(otherCookie).toContain("studyspace_demo_session=");
+    const accountPage = await fetch(new URL("/login", baseUrl), { headers: { cookie: otherCookie } });
+    const accountDoc = new JSDOM(await accountPage.text()).window.document;
+    expect(accountDoc.querySelector('form[action="/api/session"] button')?.textContent?.trim()).toBe("Sign out");
+    const otherSuccess = await fetch(successUrl, { headers: { cookie: otherCookie }, redirect: "manual" });
+    expect(otherSuccess.headers.get("location")).toBe("/bookings");
     const otherPage = await fetch(new URL("/bookings", baseUrl), { headers: { cookie: otherCookie } });
     expect(await otherPage.text()).not.toContain("Study Room 1.03");
 
@@ -48,7 +74,7 @@ describe("email-only demo login", () => {
 
     const guestCancel = await send("/api/bookings", new URLSearchParams({
       action: "cancel", id: doc.querySelector('input[name="id"]')!.getAttribute("value")!,
-    }), guestCookie);
+    }));
     expect(guestCancel.headers.get("location")).toBe("/login?notice=login-required");
 
     const differentAccountCancel = await send("/api/bookings", new URLSearchParams({
@@ -78,7 +104,7 @@ describe("email-only demo login", () => {
     const mismatch = await send("/api/bookings", new URLSearchParams({ ...base, email: emailB }), cookie);
     expect(mismatch.headers.get("location")).toContain("notice=email-mismatch");
     const booked = await send("/api/bookings", new URLSearchParams(base), cookie);
-    expect(booked.headers.get("location")).toBe("/bookings?notice=booked-mail-pending");
+    expect(new URL(booked.headers.get("location")!, baseUrl).pathname).toBe("/booking-success");
     const page = await fetch(new URL("/bookings", baseUrl), { headers: { cookie } });
     expect(await page.text()).toContain(room);
   });

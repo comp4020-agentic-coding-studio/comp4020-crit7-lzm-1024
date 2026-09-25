@@ -9,11 +9,17 @@ const post = (body: URLSearchParams, cookie = '') => {
   const requestBody = new URLSearchParams(body);
   if (requestBody.get('action') !== 'cancel') {
     if (!requestBody.has('email')) requestBody.set('email', 'u2222222@anu.edu.au');
-    if (!requestBody.has('confirmEmail')) requestBody.set('confirmEmail', requestBody.get('email')!);
   }
   return fetch(new URL('/api/bookings', baseUrl), {
     method: 'POST', headers: { origin: baseUrl, cookie }, body: requestBody, redirect: 'manual',
   });
+};
+const expectBooked = (response: Response) => {
+  const target = new URL(response.headers.get('location') || '', baseUrl);
+  expect(target.pathname).toBe('/booking-success');
+  expect(Number(target.searchParams.get('id'))).toBeGreaterThan(0);
+  expect(target.searchParams.get('notice')).toBe('booked-mail-pending');
+  return target;
 };
 const login = async (email: string) => {
   const response = await fetch(new URL('/api/session', baseUrl), {
@@ -34,6 +40,21 @@ const roomDetail = async (cookie = '') => {
 };
 
 describe('multi-library availability', () => {
+  it('opens with All libraries selected when no location is supplied', async () => {
+    const home = await fetch(new URL('/', baseUrl));
+    const doc = new JSDOM(await home.text()).window.document;
+    expect(doc.querySelector('.library-tabs a[aria-current="page"]')?.textContent).toContain('All libraries');
+    expect(doc.querySelector('input[name="library"]')?.getAttribute('value')).toBe('All');
+    const rows = [...doc.querySelectorAll('.schedule-table tbody tr')];
+    for (const library of ['Chifley', 'Hancock', 'Menzies', 'Law']) {
+      expect(rows.some((row) => row.querySelector('.room-column span')?.textContent?.includes(library))).toBe(true);
+    }
+
+    const unknown = await fetch(new URL('/?library=Unknown', baseUrl));
+    const unknownDoc = new JSDOM(await unknown.text()).window.document;
+    expect(unknownDoc.querySelector('.library-tabs a[aria-current="page"]')?.textContent).toContain('All libraries');
+  });
+
   it('shows the selected library catalogue without hiding occupied rooms', async () => {
     for (const library of ['Chifley', 'Hancock', 'Menzies', 'Law']) {
       const doc = await schedule(library);
@@ -43,10 +64,34 @@ describe('multi-library availability', () => {
     }
   });
 
+  it('keeps a selected two-hour timetable session on the room page', async () => {
+    const response = await fetch(new URL('/?library=Chifley&date=2030-10-04&duration=2&people=3', baseUrl));
+    const calendar = new JSDOM(await response.text()).window.document;
+    const slot = calendar.querySelector('a.time-slot[data-room="Study Room 1.01"][data-time="14:00"]');
+    expect(slot?.getAttribute('data-can-book')).toBe('true');
+    const href = slot!.getAttribute('href')!;
+    expect(href).toContain('picked=1');
+    expect(href).toContain('pickDuration=2');
+
+    const detail = await fetch(new URL(href, baseUrl));
+    const doc = new JSDOM(await detail.text()).window.document;
+    expect([...doc.querySelectorAll('.room-time-grid .is-selected')].map((cell) => cell.getAttribute('data-time')))
+      .toEqual(['14:00', '14:30', '15:00', '15:30']);
+    expect(doc.querySelector('#summary-time')?.textContent).toContain('14:00 – 16:00');
+    expect(doc.querySelector('#summary-duration')?.textContent).toContain('2 hours');
+    expect(doc.querySelector('input[name="time"]')?.getAttribute('value')).toBe('14:00');
+    expect(doc.querySelector('input[name="duration"]')?.getAttribute('value')).toBe('2');
+    expect(doc.querySelector('input[name="people"]')?.getAttribute('value')).toBe('3');
+    expect(doc.querySelector('#detail-booking-form')?.hasAttribute('hidden')).toBe(false);
+    expect(doc.querySelector('input[name="email"]')).not.toBeNull();
+    expect(doc.querySelector('input[name="confirmEmail"]')).toBeNull();
+  });
+
   it('shows private ownership correctly and releases cancelled slots', async () => {
     const created = await post(selection);
-    expect(created.headers.get('location')).toBe('/bookings?notice=booked-mail-pending');
-    const cookie = created.headers.get('set-cookie')!.split(';')[0];
+    expectBooked(created);
+    const cookie = created.headers.getSetCookie().find((value) => value.startsWith('studyspace_demo_session='))?.split(';')[0] || '';
+    expect(cookie).toContain('studyspace_demo_session=');
 
     const own = await schedule('Hancock', cookie);
     expect(own.querySelectorAll(`.time-slot.mine[data-room="${room}"]`).length).toBeGreaterThan(0);
@@ -93,7 +138,8 @@ describe('multi-library availability', () => {
 
     const detail = await fetch(new URL(slot!.getAttribute('href')!, baseUrl));
     const detailDoc = new JSDOM(await detail.text()).window.document;
-    expect(detailDoc.querySelectorAll('.room-time-grid .is-selected')).toHaveLength(0);
+    expect(detailDoc.querySelectorAll('.room-time-grid .is-selected')).toHaveLength(1);
+    expect(detailDoc.querySelector('#summary-duration')?.textContent).toContain('30 minutes');
     const halfHour = detailDoc.querySelector('.room-time-grid a.time-slot[data-time="12:00"]');
     expect(halfHour?.getAttribute('href')).toContain('pickDuration=0.5');
     const selectedDetail = await fetch(new URL(halfHour!.getAttribute('href')!, baseUrl));
@@ -103,8 +149,8 @@ describe('multi-library availability', () => {
     expect(selectedDoc.querySelector('input[name="duration"]')?.getAttribute('value')).toBe('0.5');
 
     const booked = await post(new URLSearchParams({ room: selectedRoom, date: selectedDate, time: '12:00', duration: '0.5', people: '1' }));
-    expect(booked.headers.get('location')).toBe('/bookings?notice=booked-mail-pending');
-    const cookie = booked.headers.get('set-cookie')!.split(';')[0];
+    expectBooked(booked);
+    const cookie = booked.headers.getSetCookie().find((value) => value.startsWith('studyspace_demo_session='))?.split(';')[0] || '';
     const own = await fetch(new URL(`/?library=Law&date=${selectedDate}&duration=0.5`, baseUrl), { headers: { cookie } });
     const ownDoc = new JSDOM(await own.text()).window.document;
     expect(ownDoc.querySelectorAll(`.schedule-table .time-slot.mine[data-room="${selectedRoom}"]`)).toHaveLength(1);
@@ -122,7 +168,7 @@ describe('multi-library availability', () => {
     expect(beforeDoc.querySelector('.result-card a')?.getAttribute('href')).toContain('time=08%3A00');
 
     for (const [time, duration, email] of [['08:00', '1.5', 'u2222222@anu.edu.au'], ['10:30', '2', 'u3333333@anu.edu.au']]) {
-      expect((await post(new URLSearchParams({ room: selectedRoom, date: selectedDate, time, duration, people: '7', email }))).headers.get('location')).toBe('/bookings?notice=booked-mail-pending');
+      expectBooked(await post(new URLSearchParams({ room: selectedRoom, date: selectedDate, time, duration, people: '7', email })));
     }
 
     const after = await fetch(new URL(query, baseUrl));
@@ -137,21 +183,16 @@ describe('multi-library availability', () => {
     expect(suggestedDoc.querySelector('.result-card a')?.getAttribute('href')).toContain('time=09%3A30');
   });
 
-  it('requires a confirmed ANU email and limits it to two hours per date across browsers and rooms', async () => {
+  it('requires an ANU email and limits it to two hours per date across browsers and rooms', async () => {
     const selectedDate = '2030-10-08';
     const email = 'u4444444@anu.edu.au';
     const request = (room: string, time: string, duration: string) => new URLSearchParams({ room, date: selectedDate, time, duration, people: '1', email });
     const invalid = await post(new URLSearchParams({ room: 'Study Room 1.01', date: selectedDate, time: '09:00', duration: '0.5', people: '1', email: 'student@anu.edu.au' }));
     expect(invalid.headers.get('location')).toContain('notice=email-invalid');
-    const mismatchedDetails = request('Study Room 1.01', '09:00', '0.5');
-    mismatchedDetails.set('confirmEmail', 'u5555555@anu.edu.au');
-    const mismatch = await post(mismatchedDetails);
-    expect(mismatch.headers.get('location')).toContain('notice=email-mismatch');
-
     const first = await post(request('Study Room 1.01', '09:00', '1.5'));
-    expect(first.headers.get('location')).toBe('/bookings?notice=booked-mail-pending');
+    expectBooked(first);
     const second = await post(request('Study Room 1.02', '11:00', '0.5'));
-    expect(second.headers.get('location')).toBe('/bookings?notice=booked-mail-pending');
+    expectBooked(second);
     const blocked = await post(request('Law Study Room 1', '12:00', '0.5'));
     expect(blocked.headers.get('location')).toContain('notice=daily-limit');
 
@@ -160,6 +201,6 @@ describe('multi-library availability', () => {
     const secondDoc = new JSDOM(await page.text()).window.document;
     const id = secondDoc.querySelector('input[name="id"]')!.getAttribute('value')!;
     await post(new URLSearchParams({ action: 'cancel', id }), accountCookie);
-    expect((await post(request('Law Study Room 1', '12:00', '0.5'))).headers.get('location')).toBe('/bookings?notice=booked-mail-pending');
+    expectBooked(await post(request('Law Study Room 1', '12:00', '0.5')));
   });
 });

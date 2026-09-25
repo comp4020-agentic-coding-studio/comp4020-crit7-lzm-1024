@@ -69,6 +69,22 @@ for (const route of ROUTES) {
       // rules that need rendered geometry or computed colour are disabled —
       // checking those (axe in a real browser, or agent-browser against the
       // live page) is yours to wire up when the spec asks for it.
+      if (route === "/") {
+        // All libraries is the default, so the two responsive grids repeat
+        // thousands of identical slots. Keep one room per library in each
+        // grid for axe while still checking every rule and both layouts.
+        for (const [rows, label] of [
+          [".schedule-table tbody tr", ".room-column span"],
+          [".mobile-room", "summary > span > span"],
+        ]) {
+          const seen = new Set<string>();
+          for (const row of doc.querySelectorAll(rows)) {
+            const library = row.querySelector(label)?.textContent?.split(" · ")[0];
+            if (library && !seen.has(library)) seen.add(library);
+            else row.remove();
+          }
+        }
+      }
       const window = dom.window as unknown as {
         eval: (source: string) => void;
         axe: typeof axe;
@@ -85,8 +101,6 @@ for (const route of ROUTES) {
           `${id}: ${help} (${nodes.map((node) => node.target.join(" ")).join("; ")})`,
       );
       expect(violations).toEqual([]);
-    // Full-day desktop and mobile grids contain over 1,000 labelled slots.
-    // Keep every axe rule above; allow jsdom time to inspect the complete DOM.
     }, 60_000);
   });
 }

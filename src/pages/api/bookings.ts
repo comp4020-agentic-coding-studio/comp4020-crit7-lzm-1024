@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { bookRoom, cancelBookingForEmail } from "../../lib/db";
 import { anuEmail, sendBookingConfirmation } from "../../lib/email";
 import { durations, endFor, rooms, slots, sydneyNowTime, sydneyToday, validDate } from "../../lib/rooms";
-import { currentDemoEmail } from "../../lib/session";
+import { beginDemoSession, currentDemoEmail } from "../../lib/session";
 
 export const POST: APIRoute = async ({ request, redirect, cookies }) => {
   const form = await request.formData();
@@ -40,12 +40,6 @@ export const POST: APIRoute = async ({ request, redirect, cookies }) => {
   if (demoEmail && submittedEmail && submittedEmail !== demoEmail) return redirect(`${detailReturn}&notice=email-mismatch`, 303);
   const email = demoEmail || submittedEmail;
   if (!email) return redirect(`${detailReturn}&notice=email-invalid`, 303);
-  if (!demoEmail) {
-    const confirmedEmail = anuEmail(String(form.get("confirmEmail") ?? ""));
-    if (!confirmedEmail) return redirect(`${detailReturn}&notice=email-invalid`, 303);
-    if (email !== confirmedEmail) return redirect(`${detailReturn}&notice=email-mismatch`, 303);
-  }
-
   const start = `${date}T${time}`;
   const end = endFor(date, time, duration);
   const bookingOwner = demoEmail ? "" : owner || randomUUID();
@@ -54,7 +48,11 @@ export const POST: APIRoute = async ({ request, redirect, cookies }) => {
   if (result.status === "conflict") {
     return redirect(`${returnTo}&notice=conflict`, 303);
   }
-  if (!demoEmail && !owner) cookies.set("studyspace_id", bookingOwner, { path: "/", httpOnly: true, sameSite: "lax", secure: new URL(request.url).protocol === "https:", maxAge: 60 * 60 * 24 * 90 });
   const mail = await sendBookingConfirmation({ bookingId: result.id, email, room: selected.name, library: selected.library, date, start: time, end: end.slice(11) });
-  return redirect(`/bookings?notice=${mail === "sent" ? "booked" : mail === "unconfigured" ? "booked-mail-pending" : "booked-mail-failed"}`, 303);
+  if (!demoEmail) {
+    cookies.delete("studyspace_id", { path: "/" });
+    beginDemoSession(cookies, email, request);
+  }
+  const notice = mail === "sent" ? "booked" : mail === "unconfigured" ? "booked-mail-pending" : "booked-mail-failed";
+  return redirect(`/booking-success?id=${result.id}&notice=${notice}`, 303);
 };

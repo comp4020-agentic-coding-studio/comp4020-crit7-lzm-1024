@@ -68,6 +68,13 @@ and is worth holding the agent to again.
   or transition, disclose it rather than leaving it to be discovered.
   Meaningful content and feedback must remain usable under
   `prefers-reduced-motion: reduce`.
+- **Keep the CI probes tied to the shipped app.** When a starter endpoint is
+  removed, replace its deploy check with a read-only check of a real journey.
+  Test the exact expected status, not merely the absence of one error code.
+- **Treat reservation and session creation as separate outcomes.** Only begin
+  the demo session after the booking transaction succeeds; test that invalid
+  details and conflicts never sign a guest in. Check that a success URL cannot
+  expose another email's booking.
 
 ## The checks
 

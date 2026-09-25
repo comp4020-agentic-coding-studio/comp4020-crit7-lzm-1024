@@ -10,7 +10,6 @@ const post = (body: URLSearchParams, withOwner = true) => {
   const requestBody = new URLSearchParams(body);
   if (requestBody.get("action") !== "cancel") {
     requestBody.set("email", email);
-    requestBody.set("confirmEmail", email);
   }
   return fetch(new URL("/api/bookings", baseUrl), {
     method: "POST", headers: { origin: baseUrl, ...(withOwner && cookie ? { cookie } : {}) }, body: requestBody, redirect: "manual",
@@ -21,18 +20,12 @@ describe("library booking journey", () => {
   it("creates a reservation that survives a new page load", async () => {
     const result = await post(selection);
     expect(result.status).toBe(303);
-    expect(result.headers.get("location")).toContain("/bookings");
-    cookie = result.headers.get("set-cookie")?.split(";")[0] || "";
-    expect(cookie).toContain("studyspace_id=");
-    const guest = await fetch(new URL("/bookings", baseUrl), { headers: { cookie }, redirect: "manual" });
-    expect(guest.headers.get("location")).toBe("/login");
-    const loggedIn = await fetch(new URL("/api/session", baseUrl), {
-      method: "POST", headers: { origin: baseUrl }, body: new URLSearchParams({ email }), redirect: "manual",
-    });
-    cookie = loggedIn.headers.getSetCookie().find((value) => value.startsWith("studyspace_demo_session="))?.split(";")[0] || "";
+    expect(new URL(result.headers.get("location")!, baseUrl).pathname).toBe("/booking-success");
+    cookie = result.headers.getSetCookie().find((value) => value.startsWith("studyspace_demo_session="))?.split(";")[0] || "";
     expect(cookie).toContain("studyspace_demo_session=");
 
     const page = await fetch(new URL("/bookings", baseUrl), { headers: { cookie } });
+    expect(page.status).toBe(200);
     expect(await page.text()).toContain(room);
   });
 
@@ -47,6 +40,6 @@ describe("library booking journey", () => {
     const cancelled = await post(new URLSearchParams({ action: "cancel", id: id! }));
     expect(cancelled.status).toBe(303);
     const retry = await post(selection);
-    expect(retry.headers.get("location")).toContain("/bookings");
+    expect(new URL(retry.headers.get("location")!, baseUrl).pathname).toBe("/booking-success");
   });
 });

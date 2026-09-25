@@ -69,16 +69,15 @@ const roomSlots = slots().slice(0, -1).map((startTime) => {
         <div class="summary-row"><span>Group size</span><strong>{people} {people === 1 ? "person" : "people"}</strong></div>
         <div class="summary-row"><span>Location</span><strong>{room.library} Library</strong></div>
         <p class="panel-note">Each ANU email can book up to 2 hours per day across all libraries.</p>
-        {notice === "email-invalid" && <p class="notice" role="alert">Enter an ANU address in the form u1234567@anu.edu.au in both fields.</p>}
-        {notice === "email-mismatch" && <p class="notice" role="alert">The two email addresses did not match. Check them and try again.</p>}
+        {notice === "email-invalid" && <p class="notice" role="alert">Enter an ANU address in the form u1234567@anu.edu.au.</p>}
+        {notice === "email-mismatch" && <p class="notice" role="alert">This email does not match your current demo account. Sign out before booking with another address.</p>}
         {notice === "daily-limit" && <p class="notice" role="alert">This ANU email has reached its 2-hour limit for this date. Choose a shorter booking or another day.</p>}
         <form id="detail-booking-form" method="post" action="/api/bookings" hidden={!available}>
           <input type="hidden" name="room" value={room.id} /><input type="hidden" name="date" value={date} /><input type="hidden" name="time" value={time} /><input type="hidden" name="duration" value={pickDuration} /><input type="hidden" name="people" value={people} />
-          {demoEmail ? <div class="booking-email-field"><label for="booking-email">Booking as</label><input id="booking-email" name="email" type="email" value={demoEmail} readonly /><p class="panel-note">To use a different address, <a href="/login">switch demo account</a>.</p></div> : <>
+          {demoEmail ? <div class="booking-email-field"><label for="booking-email">Booking as</label><input id="booking-email" name="email" type="email" value={demoEmail} readonly /><p class="panel-note">To use a different address, <a href="/login">go to your account and sign out</a> first.</p></div> :
             <div class="booking-email-field"><label for="booking-email">ANU email</label><input id="booking-email" name="email" type="email" inputmode="email" autocomplete="email" autocapitalize="none" spellcheck="false" placeholder="u1234567@anu.edu.au" pattern="[uU][0-9]{7}@anu[.]edu[.]au" maxlength="19" required /></div>
-            <div class="booking-email-field"><label for="booking-email-confirm">Confirm ANU email</label><input id="booking-email-confirm" name="confirmEmail" type="email" inputmode="email" autocomplete="email" autocapitalize="none" spellcheck="false" placeholder="u1234567@anu.edu.au" pattern="[uU][0-9]{7}@anu[.]edu[.]au" maxlength="19" required /></div>
-          </>}
-          <p class="panel-note">{demoEmail ? "This demo booking will appear under your current email account." : "Check both addresses before confirming."} {mailConfigured ? "A booking confirmation will be sent to this email." : "Email delivery is being set up; your booking will be saved here, but no email can be sent yet."}</p>
+          }
+          <p class="panel-note">{demoEmail ? "This demo booking will appear under your current email account." : "Check your email address before confirming."} {mailConfigured ? "A booking confirmation will be sent to this email." : "Email delivery is being set up; your booking will be saved here, but no email can be sent yet."}</p>
           <button class="button button-dark confirm-button" type="submit">Confirm booking <span aria-hidden="true">↗</span></button>
         </form>
         <p id="selection-prompt" class="panel-note" hidden={picked}>Select a free half-hour block above to begin.</p>
@@ -102,19 +101,6 @@ const roomSlots = slots().slice(0, -1).map((startTime) => {
   const summaryDuration = document.querySelector<HTMLElement>("#summary-duration");
   const prompt = document.querySelector<HTMLElement>("#selection-prompt");
   const unavailable = document.querySelector<HTMLElement>("#selection-unavailable");
-  const email = form?.querySelector<HTMLInputElement>('input[name="email"]');
-  const confirmedEmail = form?.querySelector<HTMLInputElement>('input[name="confirmEmail"]');
-  const checkEmail = () => {
-    if (!email || !confirmedEmail) return;
-    confirmedEmail.setCustomValidity(email.value.trim().toLowerCase() === confirmedEmail.value.trim().toLowerCase() ? "" : "The two ANU email addresses must match.");
-  };
-  email?.addEventListener("input", checkEmail);
-  confirmedEmail?.addEventListener("input", checkEmail);
-  form?.addEventListener("submit", (event) => {
-    checkEmail();
-    if (!confirmedEmail?.reportValidity()) event.preventDefault();
-  });
-
   grid?.addEventListener("click", (event) => {
     if (!(event.target instanceof Element)) return;
     const link = event.target.closest<HTMLAnchorElement>("a.time-slot.free");

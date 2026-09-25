@@ -41,7 +41,7 @@ const rows = filtered.map((room) => {
     const past = date < sydneyToday() || (date === sydneyToday() && time <= nowTime);
     const status = booking ? (booking.mine ? "mine" : "booked") : past ? "past" : "free";
     const canBook = status === "free" && requestedEnd.slice(11) <= "22:00" && !reserved.some((value) => value.start < requestedEnd && value.end > start);
-    const href = `/rooms/${encodeURIComponent(room.id)}?${searchQuery(search, { time, period: period.id })}`;
+    const href = `/rooms/${encodeURIComponent(room.id)}?${searchQuery(search, { time, period: period.id, picked: "1", pickDuration: String(duration) })}`;
     return { time, end: slotEnd.slice(11), status, canBook, href, room: room.id, label: `${room.library} · ${room.name}` };
   });
   const reservedText = reserved.length ? reserved.map((booking) => `${booking.mine ? "Yours" : "Booked"} ${booking.start.slice(11)}–${booking.end.slice(11)}`).join(" · ") : "No bookings for this day";
@@ -79,7 +79,7 @@ const displayDate = new Intl.DateTimeFormat("en-AU", { weekday: "long", day: "nu
       <h2 id="results-heading">{rangeValid ? `${from}–${to}` : "Check your time range"}</h2>
       {!rangeValid ? <p class="notice" role="alert">Choose an end time after the start time, up to two hours later.</p>
       : requestedInPast ? <p class="notice">That time has passed. Choose a later time or another date.</p>
-      : availableRooms.length ? <><p>{availableRooms.length} {availableRooms.length === 1 ? "space is" : "spaces are"} available for the entire requested time.</p><div class="result-grid">{availableRooms.map((room) => <article class="result-card"><span class="result-status">AVAILABLE · {from}–{to}</span><h3>{room.name}</h3><p>{room.library} Library · Up to {room.capacity} people</p><a href={`/rooms/${encodeURIComponent(room.id)}?${searchQuery(search, { time: from })}`}>View and book this space →</a></article>)}</div></>
+      : availableRooms.length ? <><p>{availableRooms.length} {availableRooms.length === 1 ? "space is" : "spaces are"} available for the entire requested time.</p><div class="result-grid">{availableRooms.map((room) => <article class="result-card"><span class="result-status">AVAILABLE · {from}–{to}</span><h3>{room.name}</h3><p>{room.library} Library · Up to {room.capacity} people</p><a href={`/rooms/${encodeURIComponent(room.id)}?${searchQuery(search, { time: from, picked: "1", pickDuration: String(duration) })}`}>View and book this space →</a></article>)}</div></>
       : <><p class="no-exact-match">No spaces are available for the whole {from}–{to} period with these filters.</p>{nearby.length ? <><h3>Nearby available times</h3><p>These time ranges may be shorter than your request. Select one to see its available spaces.</p><div class="recommendation-list">{nearby.map((window) => <a href={`/?${searchQuery(search, { from: window.from, to: window.to, search: "1" })}#search-results`}><strong>{window.from}–{window.to}</strong><span>{window.count} {window.count === 1 ? "space" : "spaces"} available</span><span aria-hidden="true">→</span></a>)}</div></> : <p>Try another library, date, group size or space type.</p>}</>}
     </section>}
 
