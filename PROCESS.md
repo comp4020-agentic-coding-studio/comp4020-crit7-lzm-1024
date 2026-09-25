@@ -1,54 +1,17 @@
 # Process overview
 
-<!-- TEMPLATE: this file is a shape to fill in, not a form. Replace everything
-     in it with your own overview, and delete this comment — `pnpm
-     check:evidence` will remind you if it's still here. -->
-
-Written by you, for a reader: how you got from the brief to the harness and
-agentic workflow behind this submission. Markers read this file and follow its
-citations; they don't trawl the repo for evidence you didn't point at.
-
-This file is the shape; the course site's
-[assessment page](https://comp.anu.edu.au/courses/comp4020-agentic-coding-studio/topics/assessment/#what-you-submit)
-is the requirement, and its
-[word counts](https://comp.anu.edu.au/courses/comp4020-agentic-coding-studio/topics/assessment/#word-counts)
-cover every deliverable.
-
 ## What I built
 
-A sentence or two. `README.md` is where the account of what the app is and what
-good means here lives; this file is how you got there.
+StudySpace is a full-stack student prototype for finding and booking library spaces across Chifley, Hancock, Menzies and Law. It is deliberately separate from ANU LibCal: its availability and reservations belong only to this demo.
 
 ## How I got here
 
-The account of the process: how the work actually went, and how you knew the
-result was right. Tell it in whatever order makes it clear. A weekly prototype
-needs a paragraph or two; an assignment needs more.
+I carried forward the working rules in `CLAUDE.md` ([`ccf728b`](https://github.com/comp4020-agentic-coding-studio/comp4020-crit7-lzm-1024/commit/ccf728b)) and began with a persistence test for creating, conflicting with and cancelling a booking ([`38003ae`](https://github.com/comp4020-agentic-coding-studio/comp4020-crit7-lzm-1024/commit/38003ae)). The first implementation put the catalogue, SQLite transaction, login and timetable together ([`bc0a7bc`](https://github.com/comp4020-agentic-coding-studio/comp4020-crit7-lzm-1024/commit/bc0a7bc)). That large commit made the prototype runnable, but gave a thinner history than smaller, decision-by-decision commits would have.
 
-Cite the record as you go, as links whose text is the commit hash or range and
-whose target is this repo's commit or compare URL, so a reader clicks straight
-to the evidence:
+Testing the rendered site exposed a more important problem than visual fidelity: a selected time could disappear between the timetable and room page, and a guest who had already entered an email had to enter it again. The feedback was concrete:
 
-- one commit: [`a1b2c3d`](https://github.com/YOUR-ORG/YOUR-REPO/commit/a1b2c3d)
-- a range:
-  [`a1b2c3d...e4f5a6b`](https://github.com/YOUR-ORG/YOUR-REPO/compare/a1b2c3d...e4f5a6b)
+> 我点了这个之后跳转页面 没有保持我刚才的选项
 
-To pair a prompt with the commit it produced, quote the prompt (curated, not a
-full transcript) next to the citation:
+> 我现在遇到一个情况 我现在未登录 我预定之后提示我输入邮箱 我输入完 现在跳转到登陆界面让我在登陆一次
 
-> the prompt, verbatim
-
-Screenshots are welcome where one carries the point better than a sentence does.
-Commit the file to this repo and link it with a **relative** path, which is what
-makes it render on GitHub: `![alt text](docs/before.png)`. Images don't count
-towards the word count and don't replace the citation.
-
-## Before you ship
-
-`pnpm check:evidence` verifies that this comment is gone, that your citations
-resolve to real commits, that a crit week's reflection entry is in
-`reflections/`, and that your `CLAUDE.md` is there. It checks that your account
-is traceable, not that it is good: that is the marker's call.
-
-Images aren't checked: unlike a citation whose SHA doesn't resolve, a broken
-image is visible the moment this file is rendered on GitHub.
+I made selected duration part of the room link, kept half-hour editing on the detail page, and created the demo session only after the booking transaction succeeds ([`4ee1f4e`](https://github.com/comp4020-agentic-coding-studio/comp4020-crit7-lzm-1024/commit/4ee1f4e)). HTTP tests now exercise the built server with a disposable database, including conflicts, daily limits, cross-account access and the success page. `pnpm check` provides automated backpressure; screenshots and the deployed site exposed interaction gaps the tests initially missed. I also replaced CI's obsolete SSE probe with checks of real booking routes and form origins. Email-only sign-in still does **not** verify inbox ownership, so the app remains explicitly a prototype.
